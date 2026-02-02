@@ -38,6 +38,5 @@ unstructured>=0.10.0
 psutil>=5.9.0          # System health monitoring (CPU, memory, disk)
 structlog>=23.1.0      # Structured logging for audit trails
 
-# ---------- OPTIONAL: REDIS FOR DISTRIBUTED RATE LIMITING ----------
-# Uncomment when configuring Redis:
-# redis>=5.0.0
+# ---------- DISTRIBUTED RATE LIMITING (Redis) ----------
+redis>=5.0.0           # Redis client for distributed rate limiting

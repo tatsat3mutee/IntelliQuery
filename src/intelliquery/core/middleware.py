@@ -5,13 +5,14 @@ Request/Response middleware for security, logging, and rate limiting.
 
 Features:
 - Request ID injection
-- Rate limiting (in-memory, Redis-ready interface)
+- Rate limiting (in-memory + Redis-backed)
 - Audit logging middleware
 - Request timing
 """
 
 import time
 import uuid
+import json
 import logging
 from datetime import datetime
 from typing import Dict, Optional, Callable
@@ -50,8 +51,7 @@ class InMemoryRateLimiter:
     """
     In-memory rate limiter (single-instance).
     
-    For production with multiple instances, replace with Redis-backed implementation.
-    Interface is designed to be swappable with Redis version.
+    For production with multiple instances, use RedisRateLimiter instead.
     """
     
     def __init__(self, config: Optional[RateLimitConfig] = None):
@@ -61,7 +61,6 @@ class InMemoryRateLimiter:
     
     def _get_client_key(self, request: Request) -> str:
         """Get unique client identifier"""
-        # Use X-Forwarded-For if behind proxy, otherwise use client host
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
             return forwarded.split(",")[0].strip()
@@ -80,7 +79,6 @@ class InMemoryRateLimiter:
         async with self._lock:
             state = self._clients[client_key]
             
-            # Reset counters if time window passed
             if now - state.last_minute_reset > 60:
                 state.minute_count = 0
                 state.last_minute_reset = now
@@ -89,24 +87,19 @@ class InMemoryRateLimiter:
                 state.hour_count = 0
                 state.last_hour_reset = now
             
-            # Clean old burst timestamps
             state.burst_timestamps = [ts for ts in state.burst_timestamps if now - ts < 1]
             
-            # Check burst limit
             if len(state.burst_timestamps) >= self.config.burst_limit:
                 return True, 1
             
-            # Check minute limit
             if state.minute_count >= self.config.requests_per_minute:
                 retry_after = int(60 - (now - state.last_minute_reset))
                 return True, max(1, retry_after)
             
-            # Check hour limit
             if state.hour_count >= self.config.requests_per_hour:
                 retry_after = int(3600 - (now - state.last_hour_reset))
                 return True, max(1, retry_after)
             
-            # Not limited - increment counters
             state.minute_count += 1
             state.hour_count += 1
             state.burst_timestamps.append(now)
@@ -124,8 +117,198 @@ class InMemoryRateLimiter:
         }
 
 
-# Global rate limiter instance
+class RedisRateLimiter:
+    """
+    Redis-backed distributed rate limiter.
+    
+    Works across multiple application instances.
+    Requires redis package: pip install redis
+    
+    Usage:
+        # In app.py, replace:
+        # rate_limiter = InMemoryRateLimiter()
+        # With:
+        rate_limiter = RedisRateLimiter(
+            redis_url="redis://localhost:6379/0",
+            config=RateLimitConfig(requests_per_minute=60)
+        )
+    """
+    
+    def __init__(
+        self,
+        redis_url: str = "redis://localhost:6379/0",
+        config: Optional[RateLimitConfig] = None,
+        key_prefix: str = "ratelimit"
+    ):
+        self.config = config or RateLimitConfig()
+        self.key_prefix = key_prefix
+        self._redis = None
+        self._redis_url = redis_url
+    
+    def _get_redis(self):
+        """Lazy load Redis connection"""
+        if self._redis is None:
+            try:
+                import redis
+                self._redis = redis.from_url(self._redis_url, decode_responses=True)
+                # Test connection
+                self._redis.ping()
+                logger.info(f"Redis rate limiter connected to {self._redis_url}")
+            except ImportError:
+                raise ImportError("Redis package required. Install with: pip install redis")
+            except Exception as e:
+                logger.error(f"Redis connection failed: {e}")
+                raise
+        return self._redis
+    
+    def _get_client_key(self, request: Request) -> str:
+        """Get unique client identifier"""
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+    
+    async def is_rate_limited(self, request: Request) -> tuple[bool, Optional[int]]:
+        """
+        Check if request should be rate limited using Redis.
+        Uses sliding window with atomic operations.
+        """
+        client_ip = self._get_client_key(request)
+        now = time.time()
+        
+        try:
+            r = self._get_redis()
+            
+            # Keys for different time windows
+            minute_key = f"{self.key_prefix}:minute:{client_ip}"
+            hour_key = f"{self.key_prefix}:hour:{client_ip}"
+            burst_key = f"{self.key_prefix}:burst:{client_ip}"
+            
+            # Use pipeline for atomic operations
+            pipe = r.pipeline()
+            
+            # Burst check (1 second window)
+            pipe.zremrangebyscore(burst_key, 0, now - 1)
+            pipe.zcard(burst_key)
+            pipe.zadd(burst_key, {str(now): now})
+            pipe.expire(burst_key, 2)
+            
+            # Minute check (sliding window)
+            pipe.zremrangebyscore(minute_key, 0, now - 60)
+            pipe.zcard(minute_key)
+            pipe.zadd(minute_key, {str(now): now})
+            pipe.expire(minute_key, 61)
+            
+            # Hour check (sliding window)
+            pipe.zremrangebyscore(hour_key, 0, now - 3600)
+            pipe.zcard(hour_key)
+            pipe.zadd(hour_key, {str(now): now})
+            pipe.expire(hour_key, 3601)
+            
+            results = pipe.execute()
+            
+            # Parse results (each operation returns a result)
+            burst_count = results[1]  # zcard for burst
+            minute_count = results[5]  # zcard for minute
+            hour_count = results[9]   # zcard for hour
+            
+            # Check limits
+            if burst_count >= self.config.burst_limit:
+                logger.warning(f"Burst limit exceeded for {client_ip}")
+                return True, 1
+            
+            if minute_count >= self.config.requests_per_minute:
+                # Get oldest entry to calculate retry time
+                oldest = r.zrange(minute_key, 0, 0, withscores=True)
+                if oldest:
+                    retry_after = int(60 - (now - oldest[0][1]))
+                    return True, max(1, retry_after)
+                return True, 60
+            
+            if hour_count >= self.config.requests_per_hour:
+                oldest = r.zrange(hour_key, 0, 0, withscores=True)
+                if oldest:
+                    retry_after = int(3600 - (now - oldest[0][1]))
+                    return True, max(1, retry_after)
+                return True, 3600
+            
+            return False, None
+            
+        except Exception as e:
+            logger.error(f"Redis rate limit check failed: {e}")
+            # Fail open - allow request if Redis is down
+            return False, None
+    
+    def get_remaining(self, request: Request) -> Dict[str, int]:
+        """Get remaining requests for client"""
+        client_ip = self._get_client_key(request)
+        now = time.time()
+        
+        try:
+            r = self._get_redis()
+            
+            minute_key = f"{self.key_prefix}:minute:{client_ip}"
+            hour_key = f"{self.key_prefix}:hour:{client_ip}"
+            
+            pipe = r.pipeline()
+            pipe.zcount(minute_key, now - 60, now)
+            pipe.zcount(hour_key, now - 3600, now)
+            results = pipe.execute()
+            
+            minute_count = results[0] or 0
+            hour_count = results[1] or 0
+            
+            return {
+                "minute_remaining": max(0, self.config.requests_per_minute - minute_count),
+                "hour_remaining": max(0, self.config.requests_per_hour - hour_count)
+            }
+        except Exception as e:
+            logger.error(f"Redis get_remaining failed: {e}")
+            return {"minute_remaining": -1, "hour_remaining": -1}
+    
+    def close(self):
+        """Close Redis connection"""
+        if self._redis:
+            self._redis.close()
+            self._redis = None
+
+
+def get_rate_limiter(use_redis: bool = False, redis_url: str = "redis://localhost:6379/0"):
+    """
+    Factory function to get the appropriate rate limiter.
+    
+    Args:
+        use_redis: If True, use Redis-backed limiter
+        redis_url: Redis connection URL
+        
+    Returns:
+        Rate limiter instance
+    """
+    if use_redis:
+        try:
+            limiter = RedisRateLimiter(redis_url=redis_url)
+            # Test connection
+            limiter._get_redis()
+            logger.info("Using Redis rate limiter")
+            return limiter
+        except Exception as e:
+            logger.warning(f"Redis unavailable ({e}), falling back to in-memory limiter")
+            return InMemoryRateLimiter()
+    else:
+        logger.info("Using in-memory rate limiter")
+        return InMemoryRateLimiter()
+
+
+# Global rate limiter - switch to Redis when ready
+# Option 1: In-memory (default, single instance)
 rate_limiter = InMemoryRateLimiter()
+
+# Option 2: Redis (uncomment when Redis container is running)
+# import os
+# rate_limiter = get_rate_limiter(
+#     use_redis=os.getenv("USE_REDIS", "false").lower() == "true",
+#     redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0")
+# )
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
