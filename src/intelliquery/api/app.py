@@ -40,6 +40,8 @@ from ..visualization.chart_generator import (
     generate_risk_distribution_chart,
     generate_prediction_comparison_chart
 )
+from ..agent.executor import agent_executor
+from ..agent.synthesizer import synthesis_agent
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -444,6 +446,100 @@ async def get_config():
 
 
 # ============== VECTOR SEARCH MANAGEMENT ==============
+
+@app.post("/ask-agentic")
+async def ask_agentic_endpoint(goal: str = Form(...)):
+    """
+    Planner-based agentic query handler.
+    
+    This is the main entry point for autonomous multi-step analysis.
+    The agent will:
+    1. Understand your goal
+    2. Create an execution plan
+    3. Execute tools (RAG, SQL, ML, Charts)
+    4. Synthesize insights
+    
+    Example goals:
+    - "Analyze customer churn and show me the key factors"
+    - "Train a model and predict high-risk customers"
+    - "Show me churn statistics and visualizations"
+    """
+    try:
+        if not goal.strip():
+            return JSONResponse({"success": False, "error": "Empty goal"}, status_code=400)
+        
+        logger.info(f"🤖 Agentic query: {goal}")
+        
+        # Run the agent
+        state = agent_executor.run(goal)
+        
+        # Synthesize results
+        result = synthesis_agent.synthesize(state)
+        
+        # Add execution details
+        result["execution"] = {
+            "plan": state.plan.to_dict() if state.plan else None,
+            "state_summary": state.get_summary(),
+            "trace": agent_executor.get_execution_trace(state)
+        }
+        
+        logger.info(f"Agent completed: {state.get_summary()}")
+        
+        return JSONResponse(result)
+    
+    except Exception as e:
+        logger.error(f"Agentic query error: {e}", exc_info=True)
+        return JSONResponse({
+            "success": False, 
+            "error": str(e),
+            "goal": goal
+        }, status_code=500)
+
+
+@app.get("/agent/tools")
+async def get_available_tools():
+    """Get list of available tools for the agent"""
+    try:
+        from ..agent.tools import get_tool_registry
+        registry = get_tool_registry()
+        
+        tools = []
+        for tool in registry.list_tools():
+            tools.append({
+                "name": tool.name,
+                "description": tool.description,
+                "category": tool.category.value,
+                "parameters": tool.parameters,
+                "requires_data": tool.requires_data,
+                "requires_model": tool.requires_model
+            })
+        
+        return JSONResponse({
+            "success": True,
+            "tools": tools,
+            "total": len(tools)
+        })
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/agent/plan")
+async def create_agent_plan(goal: str = Form(...)):
+    """Preview the execution plan without running it"""
+    try:
+        from ..agent.planner import planner_agent
+        
+        plan = planner_agent.create_plan(goal)
+        validation = planner_agent.validate_plan(plan)
+        
+        return JSONResponse({
+            "success": True,
+            "plan": plan.to_dict(),
+            "validation": validation
+        })
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
 
 @app.post("/vector-search/create-index")
 async def create_vector_index(

@@ -1,7 +1,7 @@
-# BillingRag Simple - Run Script
+# IntelliQuery Simple - Run Script
 # Sets up environment and starts the server
 
-Write-Host "🎯 BillingRag Simple - Starting..." -ForegroundColor Green
+Write-Host "🎯 IntelliQuery Simple - Starting..." -ForegroundColor Green
 
 # Set PYTHONPATH
 $env:PYTHONPATH = "src"
@@ -15,4 +15,4 @@ if (!(Test-Path ".env")) {
 
 # Start server
 Write-Host "🚀 Starting FastAPI server on http://localhost:8001" -ForegroundColor Green
-uvicorn billingrag_simple.app:app --host 0.0.0.0 --port 8001 --reload
+uvicorn IntelliQuery_simple.app:app --host 0.0.0.0 --port 8001 --reload

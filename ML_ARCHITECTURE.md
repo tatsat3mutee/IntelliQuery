@@ -17,7 +17,7 @@
 
 ### What This System Does
 
-BillingRAG is an **Intelligent Customer Analytics Platform** that combines:
+IntelliQuery is an **Intelligent Customer Analytics Platform** that combines:
 
 - **RAG (Retrieval Augmented Generation)**: Document Q&A using AI
 - **ML Prediction**: Customer churn prediction using machine learning
@@ -39,7 +39,7 @@ The ML component predicts **customer churn** (likelihood of customer leaving) us
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    BillingRAG Platform                       │
+│                    IntelliQuery Platform                       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │

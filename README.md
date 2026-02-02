@@ -1,4 +1,4 @@
-# 🤖 BillingRAG - Intelligent Customer Analytics Platform
+# 🤖 IntelliQuery - Intelligent Customer Analytics Platform
 
 **Production-ready RAG, ML, and Analytics system** - Works with ANY dataset!
 
@@ -42,7 +42,7 @@ Open http://localhost:8000
 ## 📁 Project Structure
 
 ```
-billingrag/
+IntelliQuery/
 ├── src/intelliquery/
 │   ├── core/           # Configuration, database, exceptions
 │   ├── rag/            # Document processing, vector search
