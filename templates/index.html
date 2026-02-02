@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BillingRAG - Intelligent Customer Analytics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #22d3ee;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --bg-input: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+            --glow: rgba(99, 102, 241, 0.3);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--bg-card) 0%, rgba(99, 102, 241, 0.1) 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 20px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        
+        .logo h1 {
+            font-size: 1.5em;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .logo-subtitle {
+            font-size: 0.75em;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+        
+        /* Navigation */
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            background: var(--bg-input);
+            padding: 4px;
+            border-radius: 12px;
+        }
+        
+        .nav-tab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-tab:hover {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .nav-tab.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 10px var(--glow);
+        }
+        
+        /* Main Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+        
+        /* Sections */
+        .section {
+            display: none;
+        }
+        
+        .section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+            transition: box-shadow 0.3s ease;
+        }
+        
+        .card:hover {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+        
+        .card-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        /* Grid Layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        /* Forms */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        input[type="text"], input[type="number"], select, textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.95em;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--glow);
+        }
+        
+        input[type="file"] {
+            padding: 20px;
+            background: var(--bg-input);
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            color: var(--text-primary);
+        }
+        
+        input[type="file"]:hover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            box-shadow: 0 2px 10px var(--glow);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px var(--glow);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-input);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success) 0%, #16a34a 100%);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
+            color: white;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Status Messages */
+        .status {
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-top: 15px;
+            font-size: 0.9em;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .status.success {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #86efac;
+        }
+        
+        .status.error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+        }
+        
+        .status.info {
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #a5b4fc;
+        }
+        
+        .status.loading {
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            color: #fcd34d;
+        }
+        
+        /* Chat/Ask Section */
+        .chat-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .query-input-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        .query-input {
+            width: 100%;
+            padding: 16px 120px 16px 20px;
+            font-size: 1em;
+            border-radius: 16px;
+            background: var(--bg-input);
+            border: 2px solid var(--border);
+        }
+        
+        .query-input:focus {
+            border-color: var(--primary);
+        }
+        
+        .query-submit {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 10px 20px;
+        }
+        
+        /* Query Type Badge */
+        .query-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        
+        .query-type-badge.knowledge {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+        }
+        
+        .query-type-badge.data {
+            background: rgba(34, 211, 238, 0.2);
+            color: #67e8f9;
+        }
+        
+        .query-type-badge.hybrid {
+            background: rgba(168, 85, 247, 0.2);
+            color: #d8b4fe;
+        }
+        
+        /* Answer Box */
+        .answer-box {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+            min-height: 200px;
+        }
+        
+        .answer-content {
+            font-size: 1em;
+            line-height: 1.8;
+            color: var(--text-primary);
+        }
+        
+        .answer-content strong {
+            color: var(--secondary);
+        }
+        
+        .answer-meta {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        /* SQL Preview */
+        .sql-preview {
+            background: #0d1117;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 15px;
+            font-family: 'Fira Code', 'Monaco', monospace;
+            font-size: 0.85em;
+            overflow-x: auto;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .sql-preview code {
+            color: #79c0ff;
+        }
+        
+        /* Results Table */
+        .results-table-container {
+            overflow-x: auto;
+            margin-top: 15px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+        
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        
+        .results-table th {
+            background: var(--bg-input);
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .results-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .results-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .results-table tr:hover td {
+            background: rgba(255,255,255,0.02);
+        }
+        
+        /* Stats Cards */
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .stat-label {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+        
+        /* Charts */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 20px;
+        }
+        
+        .chart-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+        
+        .chart-card h3 {
+            font-size: 1em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text-secondary);
+        }
+        
+        .chart-card img {
+            width: 100%;
+            border-radius: 8px;
+            background: white;
+        }
+        
+        .chart-placeholder {
+            padding: 60px 20px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+        
+        /* Example Queries */
+        .example-queries {
+            margin-top: 20px;
+        }
+        
+        .example-queries h4 {
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+        
+        .example-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .example-chip {
+            padding: 8px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .example-chip:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        
+        /* Prediction Form */
+        .predict-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        
+        /* Risk Badge */
+        .risk-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        .risk-badge.high {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+        
+        .risk-badge.medium {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fcd34d;
+        }
+        
+        .risk-badge.low {
+            background: rgba(34, 197, 94, 0.2);
+            color: #86efac;
+        }
+        
+        /* Health Status */
+        .health-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .health-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .health-dot.green { background: var(--success); }
+        .health-dot.red { background: var(--danger); }
+        .health-dot.yellow { background: var(--warning); }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .nav-tabs {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .grid-2, .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .query-input {
+                padding-right: 20px;
+            }
+            
+            .query-submit {
+                position: relative;
+                right: auto;
+                top: auto;
+                transform: none;
+                width: 100%;
+                margin-top: 10px;
+            }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">🎯</div>
+                <div>
+                    <h1>BillingRAG</h1>
+                    <div class="logo-subtitle">Intelligent Customer Analytics Platform</div>
+                </div>
+            </div>
+            
+            <nav class="nav-tabs">
+                <button class="nav-tab active" onclick="showSection('ask')">
+                    💬 Ask AI
+                </button>
+                <button class="nav-tab" onclick="showSection('upload')">
+                    📤 Upload
+                </button>
+                <button class="nav-tab" onclick="showSection('ml')">
+                    🤖 Predict
+                </button>
+                <button class="nav-tab" onclick="showSection('charts')">
+                    📊 Analytics
+                </button>
+                <button class="nav-tab" onclick="showSection('status')">
+                    ⚙️ Status
+                </button>
+            </nav>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- ASK SECTION (Default) -->
+        <div id="ask" class="section active">
+            <div class="chat-container">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-icon">🧠</div>
+                            <span>Intelligent Query Assistant</span>
+                        </div>
+                    </div>
+                    
+                    <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                        Ask questions about your documents or data. I'll automatically detect whether you need 
+                        <strong style="color: #a5b4fc;">📚 document knowledge</strong> or 
+                        <strong style="color: #67e8f9;">📊 data analysis</strong>.
+                    </p>
+                    
+                    <div class="query-input-wrapper">
+                        <input type="text" class="query-input" id="question" 
+                               placeholder="Ask anything... e.g., 'How many customers churned?' or 'What is the attention mechanism?'">
+                        <button class="btn btn-primary query-submit" onclick="askIntelligent()">
+                            Ask AI →
+                        </button>
+                    </div>
+                    
+                    <div class="example-queries">
+                        <h4>💡 Try these examples:</h4>
+                        <div class="example-list" id="exampleList">
+                            <span class="example-chip" onclick="setQuestion('How many customers are in the database?')">How many customers?</span>
+                            <span class="example-chip" onclick="setQuestion('What is the average monthly charge?')">Average monthly charge</span>
+                            <span class="example-chip" onclick="setQuestion('How many customers churned?')">Churned customers</span>
+                            <span class="example-chip" onclick="setQuestion('Top 10 customers by total charges')">Top customers</span>
+                            <span class="example-chip" onclick="setQuestion('What is the attention mechanism?')">Explain attention</span>
+                            <span class="example-chip" onclick="setQuestion('Show churn rate by contract type')">Churn by contract</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="answer-box" id="answerBox">
+                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <div style="font-size: 3em; margin-bottom: 15px;">🎯</div>
+                        <p>Ask a question to get started!</p>
+                        <p style="font-size: 0.9em; margin-top: 10px;">
+                            I can answer questions about your uploaded documents and analyze your customer data.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- UPLOAD SECTION -->
+        <div id="upload" class="section">
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-icon">📄</div>
+                            <span>Upload Documents</span>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Upload PDF or text documents for the knowledge base. These will be used to answer conceptual questions.
+                    </p>
+                    <div class="form-group">
+                        <input type="file" id="docFile" accept=".txt,.md,.pdf">
+                    </div>
+                    <button class="btn btn-primary" onclick="uploadDocument()">
+                        📤 Upload Document
+                    </button>
+                    <div id="docStatus"></div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-icon" style="background: linear-gradient(135deg, var(--secondary) 0%, #0ea5e9 100%);">📊</div>
+                            <span>Upload Customer Data</span>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Upload CSV/Excel with customer data. This enables data queries and churn predictions.
+                    </p>
+                    <div class="form-group">
+                        <input type="file" id="churnFile" accept=".csv,.xlsx,.xls">
+                    </div>
+                    <button class="btn btn-primary" style="background: linear-gradient(135deg, var(--secondary) 0%, #0ea5e9 100%);" onclick="uploadChurn()">
+                        📤 Upload Data
+                    </button>
+                    <div id="churnStatus"></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 15px;">
+                    <div class="card-icon" style="background: var(--bg-input);">📋</div>
+                    <span>Expected Data Format</span>
+                </div>
+                <div class="results-table-container">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Column</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Example</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>CustomerID</td><td>String</td><td>✅</td><td>7590-VHVEG</td></tr>
+                            <tr><td>Gender</td><td>String</td><td>✅</td><td>Male/Female</td></tr>
+                            <tr><td>Contract</td><td>String</td><td>✅</td><td>Month-to-month</td></tr>
+                            <tr><td>MonthlyCharges</td><td>Number</td><td>✅</td><td>70.35</td></tr>
+                            <tr><td>TenureMonths</td><td>Number</td><td>✅</td><td>24</td></tr>
+                            <tr><td>ChurnValue</td><td>0/1</td><td>✅</td><td>0 or 1</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ML SECTION -->
+        <div id="ml" class="section">
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-icon" style="background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);">🎓</div>
+                            <span>Train Churn Model</span>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Train a machine learning model on your customer data to predict churn probability.
+                    </p>
+                    <div class="form-group">
+                        <label>Algorithm</label>
+                        <select id="train_algorithm">
+                            <option value="random_forest">Random Forest (Recommended)</option>
+                            <option value="gradient_boosting">Gradient Boosting</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-warning" onclick="trainModel()">
+                        🚀 Train Model
+                    </button>
+                    <div id="trainStatus"></div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <div class="card-icon" style="background: linear-gradient(135deg, var(--success) 0%, #16a34a 100%);">🔮</div>
+                            <span>Predict Customer Churn</span>
+                        </div>
+                    </div>
+                    
+                    <div class="predict-grid">
+                        <div class="form-group">
+                            <label>Gender</label>
+                            <select id="pred_gender">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Senior Citizen</label>
+                            <select id="pred_senior">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Contract Type</label>
+                            <select id="pred_contract">
+                                <option value="Month-to-month">Month-to-month</option>
+                                <option value="One year">One year</option>
+                                <option value="Two year">Two year</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Internet Service</label>
+                            <select id="pred_internet">
+                                <option value="Fiber optic">Fiber optic</option>
+                                <option value="DSL">DSL</option>
+                                <option value="No">No Internet</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Monthly Charges ($)</label>
+                            <input type="number" id="pred_monthly" value="70" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Tenure (Months)</label>
+                            <input type="number" id="pred_tenure" value="12">
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-success" onclick="predictChurn()" style="margin-top: 10px;">
+                        🔮 Predict Churn
+                    </button>
+                    <div id="predictStatus"></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <div class="card-icon">📋</div>
+                        <span>Batch Predictions</span>
+                    </div>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                    Run churn predictions on all customers in the database.
+                </p>
+                <div style="display: flex; gap: 15px; align-items: flex-end;">
+                    <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                        <label>Limit</label>
+                        <input type="number" id="batch_limit" value="100">
+                    </div>
+                    <button class="btn btn-secondary" onclick="predictBatch()">
+                        Run Batch Predictions
+                    </button>
+                </div>
+                <div id="batchStatus"></div>
+            </div>
+        </div>
+        
+        <!-- CHARTS SECTION -->
+        <div id="charts" class="section">
+            <div class="card" style="margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h2 style="font-size: 1.3em; margin-bottom: 5px;">📊 Churn Analytics Dashboard</h2>
+                        <p style="color: var(--text-secondary); font-size: 0.9em;">
+                            Visualize customer churn patterns and model performance
+                        </p>
+                    </div>
+                    <button class="btn btn-primary" onclick="loadCharts()">
+                        🔄 Load Charts
+                    </button>
+                </div>
+                <div id="chartsStatus"></div>
+            </div>
+            
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>📈 Churn Distribution</h3>
+                    <img id="churnDistChart" src="" alt="Churn Distribution" style="display: none;">
+                    <div id="churnDistPlaceholder" class="chart-placeholder">
+                        Click "Load Charts" to view
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3>📊 Churn by Category</h3>
+                    <img id="categoryChart" src="" alt="Churn by Category" style="display: none;">
+                    <div id="categoryChartPlaceholder" class="chart-placeholder">
+                        Click "Load Charts" to view
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3>🎯 Feature Importance</h3>
+                    <img id="featureChart" src="" alt="Feature Importance" style="display: none;">
+                    <div id="featureChartPlaceholder" class="chart-placeholder">
+                        Train model first to view
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3>⚠️ Risk Distribution</h3>
+                    <img id="riskChart" src="" alt="Risk Distribution" style="display: none;">
+                    <div id="riskChartPlaceholder" class="chart-placeholder">
+                        Train model first to view
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- STATUS SECTION -->
+        <div id="status" class="section">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <div class="card-icon">⚙️</div>
+                        <span>System Status</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="checkHealth()">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div id="healthStatus"></div>
+            </div>
+            
+            <div class="grid-4" style="margin-top: 20px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="statDocs">-</div>
+                    <div class="stat-label">Documents</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statChunks">-</div>
+                    <div class="stat-label">Chunks</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statCustomers">-</div>
+                    <div class="stat-label">Customers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statChurnRate">-</div>
+                    <div class="stat-label">Churn Rate</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Navigation
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // Status helper
+        function showStatus(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.className = `status ${type}`;
+            el.innerHTML = message;
+        }
+        
+        // Set question from example
+        function setQuestion(q) {
+            document.getElementById('question').value = q;
+            document.getElementById('question').focus();
+        }
+        
+        // Intelligent Ask (uses query router)
+        async function askIntelligent() {
+            const question = document.getElementById('question').value;
+            const answerBox = document.getElementById('answerBox');
+            
+            if (!question.trim()) {
+                answerBox.innerHTML = '<div class="status error">⚠️ Please enter a question</div>';
+                return;
+            }
+            
+            answerBox.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <div style="font-size: 2em; margin-bottom: 15px;">🔍</div>
+                    <p style="color: var(--text-secondary);">Analyzing your question...</p>
+                </div>
+            `;
+            
+            const formData = new FormData();
+            formData.append('question', question);
+            
+            try {
+                const response = await fetch('/ask-intelligent', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    let html = '';
+                    
+                    // Query type badge
+                    const typeClass = result.query_type || 'knowledge';
+                    const typeEmoji = typeClass === 'data' ? '📊' : typeClass === 'hybrid' ? '🔀' : '📚';
+                    const typeLabel = typeClass === 'data' ? 'Data Query' : typeClass === 'hybrid' ? 'Hybrid Query' : 'Knowledge Query';
+                    
+                    html += `<div class="query-type-badge ${typeClass}">${typeEmoji} ${typeLabel}</div>`;
+                    
+                    // Answer
+                    html += `<div class="answer-content">${formatAnswer(result.answer)}</div>`;
+                    
+                    // SQL Preview (for data queries)
+                    if (result.sql) {
+                        html += `
+                            <div class="sql-preview">
+                                <div style="color: #8b949e; font-size: 0.8em; margin-bottom: 8px;">Generated SQL:</div>
+                                <code>${result.sql}</code>
+                            </div>
+                        `;
+                    }
+                    
+                    // Results Table (for data queries)
+                    if (result.results && result.results.length > 0 && result.results.length <= 20) {
+                        html += `<div class="results-table-container">
+                            <table class="results-table">
+                                <thead><tr>`;
+                        
+                        const columns = result.columns || Object.keys(result.results[0]);
+                        columns.forEach(col => {
+                            html += `<th>${col.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</th>`;
+                        });
+                        html += '</tr></thead><tbody>';
+                        
+                        result.results.forEach(row => {
+                            html += '<tr>';
+                            columns.forEach(col => {
+                                let val = row[col];
+                                if (typeof val === 'number') {
+                                    val = val.toLocaleString(undefined, {maximumFractionDigits: 2});
+                                }
+                                html += `<td>${val ?? '-'}</td>`;
+                            });
+                            html += '</tr>';
+                        });
+                        html += '</tbody></table></div>';
+                    }
+                    
+                    // Meta info
+                    html += '<div class="answer-meta">';
+                    
+                    if (result.confidence) {
+                        const confPercent = (result.confidence * 100).toFixed(0);
+                        html += `<div class="meta-item">🎯 Confidence: ${confPercent}%</div>`;
+                    }
+                    
+                    if (result.row_count !== undefined) {
+                        html += `<div class="meta-item">📊 ${result.row_count.toLocaleString()} rows</div>`;
+                    }
+                    
+                    if (result.sources && result.sources.length > 0) {
+                        const sourcesList = result.sources.map(s => 
+                            `${s.filename || s} ${s.similarity ? `(${(s.similarity * 100).toFixed(0)}%)` : ''}`
+                        ).join(', ');
+                        html += `<div class="meta-item">📚 Sources: ${sourcesList}</div>`;
+                    }
+                    
+                    html += '</div>';
+                    
+                    answerBox.innerHTML = html;
+                } else {
+                    answerBox.innerHTML = `<div class="status error">❌ ${result.error || 'Failed to get answer'}</div>`;
+                }
+            } catch (e) {
+                answerBox.innerHTML = `<div class="status error">❌ Error: ${e.message}</div>`;
+            }
+        }
+        
+        // Format answer with markdown-like styling
+        function formatAnswer(text) {
+            if (!text) return '';
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n• /g, '</p><p>• ')
+                .replace(/\n/g, '<br>');
+        }
+        
+        // Upload Document
+        async function uploadDocument() {
+            const fileInput = document.getElementById('docFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showStatus('docStatus', '⚠️ Please select a file', 'error');
+                return;
+            }
+            
+            showStatus('docStatus', '⏳ Uploading and processing...', 'loading');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 900000);
+                
+                const response = await fetch('/upload-document', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeout);
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus('docStatus', `✅ ${result.message}`, 'success');
+                    fileInput.value = '';
+                } else {
+                    showStatus('docStatus', `❌ ${result.error}`, 'error');
+                }
+            } catch (e) {
+                showStatus('docStatus', `❌ Error: ${e.message}`, 'error');
+            }
+        }
+        
+        // Upload Churn Data
+        async function uploadChurn() {
+            const fileInput = document.getElementById('churnFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showStatus('churnStatus', '⚠️ Please select a file', 'error');
+                return;
+            }
+            
+            showStatus('churnStatus', '⏳ Uploading...', 'loading');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/upload-churn', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showStatus('churnStatus', `✅ ${result.message}`, 'success');
+                } else {
+                    showStatus('churnStatus', `❌ ${result.error}`, 'error');
+                }
+            } catch (e) {
+                showStatus('churnStatus', `❌ Error: ${e.message}`, 'error');
+            }
+        }
+        
+        // Train Model
+        async function trainModel() {
+            const algorithm = document.getElementById('train_algorithm').value;
+            showStatus('trainStatus', '⏳ Training model...', 'loading');
+            
+            try {
+                const response = await fetch(`/train-model?algorithm=${algorithm}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    let statsHtml = result.message;
+                    if (result.stats) {
+                        statsHtml += `<br><small>Accuracy: ${((result.stats.accuracy || 0) * 100).toFixed(1)}% | `;
+                        statsHtml += `Precision: ${((result.stats.precision || 0) * 100).toFixed(1)}% | `;
+                        statsHtml += `Recall: ${((result.stats.recall || 0) * 100).toFixed(1)}%</small>`;
+                    }
+                    showStatus('trainStatus', `✅ ${statsHtml}`, 'success');
+                } else {
+                    showStatus('trainStatus', `❌ ${result.error}`, 'error');
+                }
+            } catch (e) {
+                showStatus('trainStatus', `❌ Error: ${e.message}`, 'error');
+            }
+        }
+        
+        // Predict Churn
+        async function predictChurn() {
+            const formData = new FormData();
+            formData.append('gender', document.getElementById('pred_gender').value);
+            formData.append('senior_citizen', document.getElementById('pred_senior').value);
+            formData.append('contract', document.getElementById('pred_contract').value);
+            formData.append('internet_service', document.getElementById('pred_internet').value);
+            formData.append('monthly_charges', document.getElementById('pred_monthly').value);
+            formData.append('tenure_months', document.getElementById('pred_tenure').value);
+            
+            showStatus('predictStatus', '⏳ Predicting...', 'loading');
+            
+            try {
+                const response = await fetch('/predict-churn', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    const risk = result.risk_level || 'UNKNOWN';
+                    const prob = ((result.churn_probability || 0) * 100).toFixed(1);
+                    const riskClass = risk.toLowerCase();
+                    
+                    let html = `<span class="risk-badge ${riskClass}">🎯 ${risk} RISK - ${prob}%</span>`;
+                    if (result.recommendation) {
+                        html += `<br><small style="color: var(--text-secondary);">💡 ${result.recommendation}</small>`;
+                    }
+                    showStatus('predictStatus', html, 'success');
+                } else {
+                    showStatus('predictStatus', `❌ ${result.error}`, 'error');
+                }
+            } catch (e) {
+                showStatus('predictStatus', `❌ Error: ${e.message}`, 'error');
+            }
+        }
+        
+        // Batch Predictions
+        async function predictBatch() {
+            const limit = document.getElementById('batch_limit').value;
+            showStatus('batchStatus', '⏳ Running batch predictions...', 'loading');
+            
+            try {
+                const response = await fetch(`/predict-batch?limit=${limit}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    const summary = result.risk_summary || {};
+                    let html = `✅ Predicted ${result.total_predictions} customers<br>`;
+                    html += `<small>HIGH: ${summary.high || 0} | MEDIUM: ${summary.medium || 0} | LOW: ${summary.low || 0}</small>`;
+                    showStatus('batchStatus', html, 'success');
+                } else {
+                    showStatus('batchStatus', `❌ ${result.error}`, 'error');
+                }
+            } catch (e) {
+                showStatus('batchStatus', `❌ Error: ${e.message}`, 'error');
+            }
+        }
+        
+        // Load Charts
+        async function loadCharts() {
+            showStatus('chartsStatus', '⏳ Generating charts...', 'loading');
+            
+            try {
+                const response = await fetch('/get-charts');
+                const result = await response.json();
+                
+                if (result.success && result.charts) {
+                    const charts = result.charts;
+                    
+                    if (charts.churn_distribution) {
+                        document.getElementById('churnDistChart').src = charts.churn_distribution;
+                        document.getElementById('churnDistChart').style.display = 'block';
+                        document.getElementById('churnDistPlaceholder').style.display = 'none';
+                    }
+                    
+                    if (charts.churn_by_category) {
+                        document.getElementById('categoryChart').src = charts.churn_by_category;
+                        document.getElementById('categoryChart').style.display = 'block';
+                        document.getElementById('categoryChartPlaceholder').style.display = 'none';
+                    }
+                    
+                    if (charts.feature_importance) {
+                        document.getElementById('featureChart').src = charts.feature_importance;
+                        document.getElementById('featureChart').style.display = 'block';
+                        document.getElementById('featureChartPlaceholder').style.display = 'none';
+                    }
+                    
+                    if (charts.risk_distribution) {
+                        document.getElementById('riskChart').src = charts.risk_distribution;
+                        document.getElementById('riskChart').style.display = 'block';
+                        document.getElementById('riskChartPlaceholder').style.display = 'none';
+                    }
+                    
+                    showStatus('chartsStatus', '✅ Charts loaded!', 'success');
+                } else {
+                    showStatus('chartsStatus', `❌ ${result.error || 'Failed'}`, 'error');
+                }
+            } catch (e) {
+                showStatus('chartsStatus', `❌ Error: ${e.message}`, 'error');
+            }
+        }
+        
+        // Health Check
+        async function checkHealth() {
+            const statusEl = document.getElementById('healthStatus');
+            statusEl.innerHTML = '<p style="color: var(--warning);">⏳ Checking...</p>';
+            
+            try {
+                const [healthRes, statsRes] = await Promise.all([
+                    fetch('/health'),
+                    fetch('/stats')
+                ]);
+                
+                const health = await healthRes.json();
+                const stats = await statsRes.json();
+                
+                let html = '<div style="margin-top: 15px;">';
+                const dbStatus = health.databricks_connection;
+                html += `<div class="health-status">
+                    <div class="health-dot ${dbStatus ? 'green' : 'red'}"></div>
+                    <span>Databricks: ${dbStatus ? 'Connected' : 'Disconnected'}</span>
+                </div>`;
+                
+                if (health.config) {
+                    html += `<p style="color: var(--text-secondary); font-size: 0.85em; margin-top: 10px;">
+                        Host: ${health.config.host}<br>
+                        Catalog: ${health.config.catalog}.${health.config.schema}
+                    </p>`;
+                }
+                html += '</div>';
+                
+                statusEl.innerHTML = html;
+                
+                if (stats.success) {
+                    document.getElementById('statDocs').textContent = stats.documents?.total_files || 0;
+                    document.getElementById('statChunks').textContent = stats.documents?.total_chunks || 0;
+                    document.getElementById('statCustomers').textContent = (stats.churn?.total_customers || 0).toLocaleString();
+                    document.getElementById('statChurnRate').textContent = stats.churn?.churn_rate || '-';
+                }
+            } catch (e) {
+                statusEl.innerHTML = `<div class="status error">❌ ${e.message}</div>`;
+            }
+        }
+        
+        // Enter key for question
+        document.getElementById('question').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                askIntelligent();
+            }
+        });
+        
+        // Initial load
+        window.onload = function() {
+            checkHealth();
+        };
+    </script>
+</body>
+</html>
