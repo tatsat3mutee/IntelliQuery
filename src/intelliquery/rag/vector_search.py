@@ -301,28 +301,32 @@ class VectorSearchManager:
             if not self.index_exists():
                 raise Exception("Vector index does not exist. Create it first.")
             
-            # Build search parameters
-            search_params = {
-                "columns": ["id", "filename", "text", "chunk_index", "upload_date"],
+            # Get the index object first
+            index = client.get_index(
+                endpoint_name=self.endpoint_name,
+                index_name=self.index_name
+            )
+            
+            # Build search columns
+            search_columns = ["id", "filename", "text", "chunk_index", "upload_date"]
+            
+            # Execute search on the INDEX object (not the client)
+            logger.info(f"Searching index {self.index_name} for top {top_k} results")
+            
+            # Build search kwargs
+            search_kwargs = {
+                "query_vector": query_vector,
+                "columns": search_columns,
                 "num_results": top_k
             }
             
             # Add filters if provided
             if filters:
-                # Convert to Databricks filter format
                 filter_str = " AND ".join([f"{k} = '{v}'" for k, v in filters.items()])
-                search_params["filters"] = filter_str
+                search_kwargs["filters"] = filter_str
             
-            # Execute search
-            logger.info(f"Searching index {self.index_name} for top {top_k} results")
-            
-            results = client.similarity_search(
-                index_name=self.index_name,
-                query_vector=query_vector,
-                columns=search_params["columns"],
-                num_results=top_k,
-                filters=search_params.get("filters")
-            )
+            # Call similarity_search on the INDEX object
+            results = index.similarity_search(**search_kwargs)
             
             # Convert results to our format
             documents = []
