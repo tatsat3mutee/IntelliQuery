@@ -33,3 +33,11 @@ langchain>=0.1.0
 langchain-community>=0.0.20
 pypdf>=3.17.0
 unstructured>=0.10.0
+
+# ---------- ENTERPRISE SECURITY & MONITORING ----------
+psutil>=5.9.0          # System health monitoring (CPU, memory, disk)
+structlog>=23.1.0      # Structured logging for audit trails
+
+# ---------- OPTIONAL: REDIS FOR DISTRIBUTED RATE LIMITING ----------
+# Uncomment when configuring Redis:
+# redis>=5.0.0

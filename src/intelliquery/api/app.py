@@ -12,10 +12,17 @@ Endpoints:
 - /predict-churn     : Get Churn prediction
 - /get-charts        : Get all churn charts
 - /health            : Health check
+
+Enterprise Features:
+- Rate limiting
+- Input validation
+- Audit logging
+- Error handling framework
 """
 
 import logging
 import asyncio
+import uuid
 from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
@@ -27,6 +34,17 @@ from fastapi.staticfiles import StaticFiles
 
 from ..core.config import config
 from ..core.database import db_client
+from ..core.security import InputValidator, FileType
+from ..core.error_handler import (
+    IntelliQueryException, ValidationException, FileValidationException,
+    FileTooLargeException, UnsupportedFileTypeException, ErrorCode,
+    get_request_id, safe_error_response
+)
+from ..core.middleware import (
+    RequestContextMiddleware, RateLimitMiddleware, AuditLogMiddleware,
+    timeout_decorator
+)
+from ..core.health import health_checker
 from ..rag.document_processor import process_document, answer_question, get_document_stats
 from ..rag.vector_search import vector_search_manager
 from ..analytics.data_handler import process_churn_file, get_churn_stats, get_churn_by_category
@@ -47,12 +65,21 @@ from ..agent.synthesizer import synthesis_agent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Setup audit logger
+audit_logger = logging.getLogger("audit")
+audit_logger.setLevel(logging.INFO)
+
 # Create app
 app = FastAPI(
     title="IntelliQuery AI Simple",
     description="RAG + ML for Billing Data - Databricks Only",
     version="1.0.0"
 )
+
+# Add enterprise middleware (order matters - first added = outermost)
+app.add_middleware(AuditLogMiddleware, log_request_body=False)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 # Setup templates
 # Path: src/intelliquery/api/app.py -> go up 3 levels to project root, then to templates
@@ -66,6 +93,48 @@ logger.info(f"📂 Templates: {TEMPLATE_DIR}")
 if 'executor' not in dir():
     executor = ThreadPoolExecutor(max_workers=4)
 
+# File upload limits
+MAX_DOCUMENT_SIZE = 50 * 1024 * 1024  # 50MB
+MAX_DATA_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+ALLOWED_DOCUMENT_TYPES = [FileType.PDF, FileType.TEXT]
+ALLOWED_DATA_TYPES = [FileType.CSV, FileType.EXCEL_XLSX, FileType.EXCEL_XLS]
+
+
+# ============== EXCEPTION HANDLERS ==============
+
+@app.exception_handler(IntelliQueryException)
+async def handle_intelliquery_exception(request: Request, exc: IntelliQueryException):
+    """Handle custom IntelliQuery exceptions"""
+    request_id = get_request_id(request)
+    
+    # Log with internal details
+    log_msg = f"[{request_id}] {exc.error_code.value}: {exc.message}"
+    if exc.internal_message:
+        log_msg += f" | Internal: {exc.internal_message}"
+    logger.warning(log_msg)
+    
+    return JSONResponse(
+        status_code=exc.http_status,
+        content=exc.to_response_dict(request_id)
+    )
+
+
+@app.exception_handler(Exception)
+async def handle_generic_exception(request: Request, exc: Exception):
+    """Handle unexpected exceptions - never expose internal details"""
+    request_id = get_request_id(request)
+    
+    # Log full details internally
+    logger.error(f"[{request_id}] Unhandled exception: {exc}", exc_info=True)
+    
+    # Return safe response
+    return safe_error_response(
+        error_code=ErrorCode.INTERNAL_ERROR,
+        message="An unexpected error occurred. Please try again.",
+        request_id=request_id,
+        http_status=500
+    )
+
 
 # ============== WEB UI ==============
 
@@ -78,22 +147,38 @@ async def home(request: Request):
 # ============== DOCUMENT UPLOAD (RAG) ==============
 
 @app.post("/upload-document")
-async def upload_document(file: UploadFile = File(...)):
-    """Upload document for RAG embedding"""
+async def upload_document(request: Request, file: UploadFile = File(...)):
+    """Upload document for RAG embedding with enterprise-grade validation"""
+    request_id = get_request_id(request)
+    
     try:
-        logger.info(f"=== Received upload request for: {file.filename} ===")
+        logger.info(f"[{request_id}] Document upload request: {file.filename}")
         
-        # Validate file
+        # Validate filename
         if not file.filename:
-            return JSONResponse({"success": False, "error": "No filename"}, status_code=400)
+            raise ValidationException("Filename is required", field="file")
         
         # Read content
         content = await file.read()
-        logger.info(f"File size: {len(content)} bytes")
+        
+        # Validate file (size, type)
+        validation = InputValidator.validate_file_upload(
+            filename=file.filename,
+            content=content,
+            allowed_types=ALLOWED_DOCUMENT_TYPES,
+            max_size_bytes=MAX_DOCUMENT_SIZE
+        )
+        
+        if not validation.is_valid:
+            raise FileValidationException(validation.error_message, file.filename)
+        
+        # Validate query input (filename can be used maliciously)
+        filename = validation.sanitized_value
+        logger.info(f"[{request_id}] Validated file: {len(content)} bytes")
         
         # Extract text based on file type
         text = None
-        filename_lower = file.filename.lower()
+        filename_lower = filename.lower()
         
         if filename_lower.endswith('.pdf'):
             # Parse PDF using pypdf (fast, direct)
@@ -111,25 +196,24 @@ async def upload_document(file: UploadFile = File(...)):
                         text_parts.append(page_text)
                 
                 text = "\n\n".join(text_parts)
-                logger.info(f"Extracted {len(text)} characters from {len(pdf_reader.pages)} PDF pages")
+                logger.info(f"[{request_id}] Extracted {len(text)} chars from {len(pdf_reader.pages)} PDF pages")
                 
                 if not text.strip():
-                    return JSONResponse({
-                        "success": False, 
-                        "error": "PDF appears to be empty or contains only images"
-                    }, status_code=400)
+                    raise ValidationException(
+                        "PDF appears to be empty or contains only images",
+                        field="file"
+                    )
                     
             except ImportError:
-                return JSONResponse({
-                    "success": False, 
-                    "error": "PDF support not installed. Install pypdf: pip install pypdf"
-                }, status_code=500)
+                raise ValidationException(
+                    "PDF support not installed. Install pypdf: pip install pypdf",
+                    field="file"
+                )
+            except ValidationException:
+                raise
             except Exception as pdf_error:
-                logger.error(f"PDF parsing error: {pdf_error}")
-                return JSONResponse({
-                    "success": False, 
-                    "error": f"PDF parsing failed: {str(pdf_error)}"
-                }, status_code=400)
+                logger.error(f"[{request_id}] PDF parsing error: {pdf_error}")
+                raise ValidationException(f"PDF parsing failed: {str(pdf_error)[:100]}", field="file")
         else:
             # Try to decode as text
             try:
@@ -138,116 +222,154 @@ async def upload_document(file: UploadFile = File(...)):
                 try:
                     text = content.decode('latin-1')
                 except:
-                    return JSONResponse({
-                        "success": False, 
-                        "error": "Cannot decode file. Please upload a text file (.txt) or PDF (.pdf)"
-                    }, status_code=400)
+                    raise ValidationException(
+                        "Cannot decode file. Please upload a text file (.txt) or PDF (.pdf)",
+                        field="file"
+                    )
         
         if not text or not text.strip():
-            return JSONResponse({
-                "success": False, 
-                "error": "File is empty or contains no readable text"
-            }, status_code=400)
+            raise ValidationException(
+                "File is empty or contains no readable text",
+                field="file"
+            )
         
         # Process document in background thread to avoid blocking
-        logger.info(f"Starting document processing for {file.filename}")
+        logger.info(f"[{request_id}] Starting document processing")
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(executor, process_document, file.filename, text)
-        logger.info(f"Processing complete: {result}")
+        result = await loop.run_in_executor(executor, process_document, filename, text)
+        logger.info(f"[{request_id}] Processing complete: {result.get('success')}")
         
         return JSONResponse(result)
     
+    except IntelliQueryException:
+        raise
     except Exception as e:
-        logger.error(f"Upload document error: {e}", exc_info=True)
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+        logger.error(f"[{request_id}] Upload document error: {e}", exc_info=True)
+        raise
 
 
 # ============== CHURN DATA UPLOAD ==============
 
 @app.post("/upload-churn")
-async def upload_churn(file: UploadFile = File(...)):
-    """Upload Telco Churn CSV/Excel data"""
+async def upload_churn(request: Request, file: UploadFile = File(...)):
+    """Upload Telco Churn CSV/Excel data with validation"""
+    request_id = get_request_id(request)
+    
     try:
-        # Validate file
+        # Validate filename
         if not file.filename:
-            return JSONResponse({"success": False, "error": "No filename"}, status_code=400)
-        
-        # Check extension
-        if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
-            return JSONResponse({
-                "success": False, 
-                "error": "Please upload a CSV or Excel file"
-            }, status_code=400)
+            raise ValidationException("Filename is required", field="file")
         
         # Read content
         content = await file.read()
         
+        # Validate file (size, type)
+        validation = InputValidator.validate_file_upload(
+            filename=file.filename,
+            content=content,
+            allowed_types=ALLOWED_DATA_TYPES,
+            max_size_bytes=MAX_DATA_FILE_SIZE
+        )
+        
+        if not validation.is_valid:
+            raise FileValidationException(validation.error_message, file.filename)
+        
+        filename = validation.sanitized_value
+        logger.info(f"[{request_id}] Processing churn file: {filename} ({len(content)} bytes)")
+        
         # Process Churn file
-        result = process_churn_file(content, file.filename)
+        result = process_churn_file(content, filename)
         
         return JSONResponse(result)
     
+    except IntelliQueryException:
+        raise
     except Exception as e:
-        logger.error(f"Upload Churn error: {e}")
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+        logger.error(f"[{request_id}] Upload Churn error: {e}")
+        raise
 
 
 # ============== RAG QUESTION ANSWERING ==============
 
 @app.post("/ask")
-async def ask_question_endpoint(question: str = Form(...)):
-    """Ask a question using RAG"""
+async def ask_question_endpoint(request: Request, question: str = Form(...)):
+    """Ask a question using RAG with input validation"""
+    request_id = get_request_id(request)
+    
     try:
-        if not question.strip():
-            return JSONResponse({"success": False, "error": "Empty question"}, status_code=400)
+        # Validate input
+        validation = InputValidator.validate_query_input(question)
+        if not validation.is_valid:
+            raise ValidationException(validation.error_message, field="question")
+        
+        question = validation.sanitized_value
+        logger.info(f"[{request_id}] RAG question: {question[:100]}...")
         
         result = answer_question(question)
         return JSONResponse(result)
     
+    except IntelliQueryException:
+        raise
     except Exception as e:
-        logger.error(f"Ask error: {e}")
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+        logger.error(f"[{request_id}] Ask error: {e}")
+        raise
 
 
 @app.post("/ask-intelligent")
-async def ask_intelligent_endpoint(question: str = Form(...)):
+async def ask_intelligent_endpoint(request: Request, question: str = Form(...)):
     """
-    Intelligent query handler - routes to appropriate backend:
+    Intelligent query handler with validation - routes to appropriate backend:
     - KNOWLEDGE queries → Document RAG
     - DATA queries → Text-to-SQL
     - HYBRID queries → Both
     """
+    request_id = get_request_id(request)
+    
     try:
-        if not question.strip():
-            return JSONResponse({"success": False, "error": "Empty question"}, status_code=400)
+        # Validate input
+        validation = InputValidator.validate_query_input(question)
+        if not validation.is_valid:
+            raise ValidationException(validation.error_message, field="question")
         
-        logger.info(f"Intelligent query: {question}")
+        question = validation.sanitized_value
+        logger.info(f"[{request_id}] Intelligent query: {question[:100]}...")
         
         # Use the query router to classify and handle
         result = query_router.route_query(question)
         
-        logger.info(f"Query type: {result.get('query_type')}, Success: {result.get('success')}")
+        logger.info(f"[{request_id}] Query type: {result.get('query_type')}, Success: {result.get('success')}")
         
         return JSONResponse(result)
     
+    except IntelliQueryException:
+        raise
     except Exception as e:
-        logger.error(f"Intelligent ask error: {e}", exc_info=True)
-        return JSONResponse({
-            "success": False, 
-            "error": str(e),
-            "query_type": "error"
-        }, status_code=500)
+        logger.error(f"[{request_id}] Intelligent ask error: {e}", exc_info=True)
+        raise
 
 
 @app.post("/ask-data")
-async def ask_data_endpoint(question: str = Form(...)):
-    """Direct Text-to-SQL query endpoint"""
+async def ask_data_endpoint(request: Request, question: str = Form(...)):
+    """Direct Text-to-SQL query endpoint with validation"""
+    request_id = get_request_id(request)
+    
     try:
-        if not question.strip():
-            return JSONResponse({"success": False, "error": "Empty question"}, status_code=400)
+        # Validate input
+        validation = InputValidator.validate_query_input(question)
+        if not validation.is_valid:
+            raise ValidationException(validation.error_message, field="question")
+        
+        question = validation.sanitized_value
+        logger.info(f"[{request_id}] Data query: {question[:100]}...")
         
         result = text_to_sql_agent.execute_query(question)
         return JSONResponse(result)
+    
+    except IntelliQueryException:
+        raise
+    except Exception as e:
+        logger.error(f"[{request_id}] Data query error: {e}")
+        raise
     
     except Exception as e:
         logger.error(f"Data query error: {e}")
@@ -421,22 +543,41 @@ async def get_stats():
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    status = {
-        "status": "healthy",
-        "config": config.get_status(),
-        "databricks_connection": False
-    }
+async def health_check(deep: bool = False):
+    """
+    Comprehensive health check endpoint.
     
-    # Test Databricks connection
-    if config.is_configured():
-        try:
-            status["databricks_connection"] = db_client.test_connection()
-        except Exception as e:
-            status["databricks_error"] = str(e)
+    Query params:
+        deep: If true, includes slower checks (embedding/LLM services)
+    """
+    health = await health_checker.get_health(deep_check=deep)
     
-    return JSONResponse(status)
+    # Set appropriate status code based on health
+    status_code = 200
+    if health.status.value == "unhealthy":
+        status_code = 503
+    elif health.status.value == "degraded":
+        status_code = 200  # Still operational, just degraded
+    
+    return JSONResponse(health.to_dict(), status_code=status_code)
+
+
+@app.get("/health/live")
+async def liveness_check():
+    """
+    Kubernetes liveness probe - is the process running?
+    """
+    return JSONResponse(health_checker.get_liveness())
+
+
+@app.get("/health/ready")
+async def readiness_check():
+    """
+    Kubernetes readiness probe - is the service ready for traffic?
+    """
+    result = await health_checker.get_readiness()
+    status_code = 200 if result["ready"] else 503
+    return JSONResponse(result, status_code=status_code)
 
 
 @app.get("/config")
@@ -448,9 +589,9 @@ async def get_config():
 # ============== VECTOR SEARCH MANAGEMENT ==============
 
 @app.post("/ask-agentic")
-async def ask_agentic_endpoint(goal: str = Form(...)):
+async def ask_agentic_endpoint(request: Request, goal: str = Form(...)):
     """
-    Planner-based agentic query handler.
+    Planner-based agentic query handler with timeout protection.
     
     This is the main entry point for autonomous multi-step analysis.
     The agent will:
@@ -464,14 +605,28 @@ async def ask_agentic_endpoint(goal: str = Form(...)):
     - "Train a model and predict high-risk customers"
     - "Show me churn statistics and visualizations"
     """
+    request_id = get_request_id(request)
+    
     try:
-        if not goal.strip():
-            return JSONResponse({"success": False, "error": "Empty goal"}, status_code=400)
+        # Validate input
+        validation = InputValidator.validate_query_input(goal)
+        if not validation.is_valid:
+            raise ValidationException(validation.error_message, field="goal")
         
-        logger.info(f"🤖 Agentic query: {goal}")
+        goal = validation.sanitized_value
+        logger.info(f"[{request_id}] 🤖 Agentic query: {goal[:100]}...")
         
-        # Run the agent
-        state = agent_executor.run(goal)
+        # Run the agent with timeout protection
+        try:
+            state = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    executor, agent_executor.run, goal
+                ),
+                timeout=120  # 2 minute timeout for complex queries
+            )
+        except asyncio.TimeoutError:
+            from ..core.error_handler import TimeoutException
+            raise TimeoutException(operation="Agent execution", timeout_seconds=120)
         
         # Synthesize results
         result = synthesis_agent.synthesize(state)
@@ -482,18 +637,17 @@ async def ask_agentic_endpoint(goal: str = Form(...)):
             "state_summary": state.get_summary(),
             "trace": agent_executor.get_execution_trace(state)
         }
+        result["request_id"] = request_id
         
-        logger.info(f"Agent completed: {state.get_summary()}")
+        logger.info(f"[{request_id}] Agent completed: {state.get_summary()}")
         
         return JSONResponse(result)
     
+    except IntelliQueryException:
+        raise
     except Exception as e:
-        logger.error(f"Agentic query error: {e}", exc_info=True)
-        return JSONResponse({
-            "success": False, 
-            "error": str(e),
-            "goal": goal
-        }, status_code=500)
+        logger.error(f"[{request_id}] Agentic query error: {e}", exc_info=True)
+        raise
 
 
 @app.get("/agent/tools")
